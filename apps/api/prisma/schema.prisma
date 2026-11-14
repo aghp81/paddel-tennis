@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Sport { TENNIS PADEL }
+enum UserRole { PLAYER COACH CLUB_ADMIN PLATFORM_ADMIN }
+enum SkillLevel { BEGINNER INTERMEDIATE ADVANCED }
+enum CourtSurface { OUTDOOR INDOOR GLASS CLAY HARD GRASS }
+enum BookingStatus { PENDING CONFIRMED CANCELLED COMPLETED }
+enum MatchStatus { OPEN ACCEPTED COMPLETED CANCELLED }
+enum InviteStatus { PENDING ACCEPTED DECLINED CANCELLED }
+
+model User {
+  id             String      @id @default(cuid())
+  phone          String      @unique
+  displayName    String
+  email          String?     @unique
+  avatarUrl      String?
+  birthDate      DateTime?
+  city           String?
+  bio            String?
+  role           UserRole    @default(PLAYER)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  playerProfile  PlayerProfile?
+  coachProfile   CoachProfile?
+  bookings       Booking[]
+  hostedMatches  Match[]     @relation("MatchHost")
+  matchInvites   MatchInvite[]
+  results        MatchResult[]
+}
+
+model PlayerProfile {
+  id           String     @id @default(cuid())
+  userId       String     @unique
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillLevel   SkillLevel @default(BEGINNER)
+  playingStyle String?
+  availability String[]   @default([])
+  sports       Sport[]    @default([])
+  rating       Int        @default(1000)
+  wins         Int        @default(0)
+  losses       Int        @default(0)
+  city         String?
+  updatedAt    DateTime   @updatedAt
+}
+
+model CoachProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sports          Sport[]
+  qualifications  String[] @default([])
+  experienceYears Int      @default(0)
+  verified        Boolean  @default(false)
+  hourlyRate      Int?
+  bio             String?
+  createdAt       DateTime @default(now())
+}
+
+model Club {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  city        String
+  district    String?
+  address     String?
+  description String?
+  phone       String?
+  rating      Float    @default(0)
+  active      Boolean  @default(true)
+  courts      Court[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([city, active])
+}
+
+model Court {
+  id          String       @id @default(cuid())
+  clubId      String
+  club        Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  name        String
+  sport       Sport
+  surface     CourtSurface
+  capacity    Int          @default(4)
+  pricePerHour Int
+  active      Boolean      @default(true)
+  bookings    Booking[]
+  schedules   CourtSchedule[]
+  createdAt   DateTime     @default(now())
+  @@index([sport, active])
+}
+
+model CourtSchedule {
+  id        String   @id @default(cuid())
+  courtId   String
+  court     Court    @relation(fields: [courtId], references: [id], onDelete: Cascade)
+  /// Day of week using ISO numbering: Monday=1 through Sunday=7.
+  dayOfWeek Int
+  opensAt   String   // Local time in HH:mm format
+  closesAt  String   // Local time in HH:mm format
+  pricePerHour Int?
+  active    Boolean  @default(true)
+  @@index([courtId, dayOfWeek, active])
+}
+
+model Booking {
+  id          String        @id @default(cuid())
+  courtId     String
+  court       Court         @relation(fields: [courtId], references: [id], onDelete: Restrict)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  startsAt    DateTime
+  endsAt      DateTime
+  totalPrice  Int
+  status      BookingStatus @default(PENDING)
+  note        String?
+  createdAt   DateTime      @default(now())
+  @@index([courtId, startsAt, endsAt])
+  @@index([userId, startsAt])
+}
+
+model Match {
+  id          String       @id @default(cuid())
+  hostId      String
+  host        User         @relation("MatchHost", fields: [hostId], references: [id])
+  sport       Sport
+  city        String
+  startsAt    DateTime
+  skillLevel  SkillLevel
+  status      MatchStatus  @default(OPEN)
+  description String?
+  invites     MatchInvite[]
+  result      MatchResult?
+  createdAt   DateTime     @default(now())
+  @@index([city, sport, startsAt, status])
+}
+
+model MatchInvite {
+  id        String   @id @default(cuid())
+  matchId   String
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String?
+  status    InviteStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  @@unique([matchId, userId])
+}
+
+model MatchResult {
+  id          String   @id @default(cuid())
+  matchId     String   @unique
+  match       Match    @relation(fields: [matchId], references: [id])
+  winnerId    String
+  winner      User     @relation(fields: [winnerId], references: [id])
+  score       String
+  verified    Boolean  @default(false)
+  playedAt    DateTime @default(now())
+}
+
+model Tournament {
+  id          String   @id @default(cuid())
+  title       String
+  sport       Sport
+  city        String
+  startsAt    DateTime
+  endsAt      DateTime?
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  @@index([city, sport, startsAt])
+}
