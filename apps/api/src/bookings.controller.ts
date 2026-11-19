@@ -4,6 +4,7 @@ import { PrismaService } from './prisma.service';
 
 const IRAN_OFFSET = '+03:30';
 const minute = (time: string) => { const [h, m] = time.split(':').map(Number); return h * 60 + m; };
+// Schedule strings are local Tehran wall-clock times; booking timestamps are stored as UTC instants.
 const localDate = (date: string, time: string) => new Date(`${date}T${time}:00${IRAN_OFFSET}`);
 const activeStatuses = [BookingStatus.CONFIRMED, BookingStatus.PENDING];
 
@@ -26,6 +27,7 @@ export class CourtAvailabilityController {
       this.prisma.courtClosure.findMany({ where: { courtId: id, startsAt: { lt: end }, endsAt: { gt: start } }, select: { startsAt: true, endsAt: true } }),
     ]);
     const slots: { startsAt: string; endsAt: string; price: number }[] = [];
+    // Build candidate slots from weekly hours, then remove booked and closed intervals.
     for (const schedule of court.schedules) {
       const duration = schedule.slotDurationMinutes;
       for (let cursor = minute(schedule.opensAt); cursor + duration <= minute(schedule.closesAt); cursor += duration + schedule.bufferMinutes) {
@@ -62,8 +64,10 @@ export class BookingsController {
     const totalPrice = Math.round(court.pricePerHour * schedule.slotDurationMinutes / 60);
     try {
       return await this.prisma.$transaction(async (tx) => {
+        // Serialize writes per court so two simultaneous requests cannot claim an overlapping slot.
         await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${body.courtId}, 0))`;
         const now = new Date();
+        // Expired holds must stop blocking availability before checking for an overlap.
         await tx.booking.updateMany({ where: { courtId: body.courtId, status: BookingStatus.PENDING, holdExpiresAt: { lte: now } }, data: { status: BookingStatus.EXPIRED } });
         const conflict = await tx.booking.findFirst({ where: { courtId: body.courtId, status: { in: activeStatuses }, OR: [{ status: BookingStatus.CONFIRMED }, { holdExpiresAt: { gt: now } }, { holdExpiresAt: null }], startsAt: { lt: endsAt }, endsAt: { gt: startsAt } } });
         const closure = await tx.courtClosure.findFirst({ where: { courtId: body.courtId, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } } });
