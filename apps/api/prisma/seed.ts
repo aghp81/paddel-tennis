@@ -10,7 +10,13 @@ async function main() {
   ];
   for (const item of clubs) {
     const { court, sport, surface, price, ...club } = item;
-    await prisma.club.upsert({ where: { slug: club.slug }, update: { ...club }, create: { ...club, courts: { create: { name: court, sport, surface, pricePerHour: price } } } });
+    await prisma.club.upsert({ where: { slug: club.slug }, update: { ...club }, create: { ...club, courts: { create: { name: court, sport, surface, pricePerHour: price, schedules: { create: Array.from({ length: 7 }, (_, weekday) => ({ weekday, opensAt: '08:00', closesAt: '22:00', slotDurationMinutes: 60, bufferMinutes: 0 })) } } } } });
+    const savedClub = await prisma.club.findUniqueOrThrow({ where: { slug: club.slug } });
+    const savedCourt = await prisma.court.findFirstOrThrow({ where: { clubId: savedClub.id, sport } });
+    for (let weekday = 0; weekday < 7; weekday++) {
+      const scheduleId = `seed-${club.slug}-${weekday}`;
+      await prisma.courtSchedule.upsert({ where: { id: scheduleId }, update: {}, create: { id: scheduleId, courtId: savedCourt.id, weekday, opensAt: '08:00', closesAt: '22:00', slotDurationMinutes: 60 } });
+    }
   }
 }
 
