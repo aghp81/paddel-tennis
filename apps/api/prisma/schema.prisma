@@ -11,7 +11,7 @@ enum Sport { TENNIS PADEL }
 enum UserRole { PLAYER COACH CLUB_ADMIN PLATFORM_ADMIN }
 enum SkillLevel { BEGINNER INTERMEDIATE ADVANCED }
 enum CourtSurface { OUTDOOR INDOOR GLASS CLAY HARD GRASS }
-enum BookingStatus { PENDING CONFIRMED CANCELLED COMPLETED }
+enum BookingStatus { PENDING CONFIRMED CANCELLED COMPLETED EXPIRED }
 enum MatchStatus { OPEN ACCEPTED COMPLETED CANCELLED }
 
 model User {
@@ -90,24 +90,55 @@ model Court {
   pricePerHour Int
   active      Boolean      @default(true)
   bookings    Booking[]
+  schedules   CourtSchedule[]
+  closures    CourtClosure[]
   createdAt   DateTime     @default(now())
   @@index([sport, active])
+}
+
+// Local opening hours are stored as HH:mm and interpreted in Asia/Tehran.
+model CourtSchedule {
+  id                   String   @id @default(cuid())
+  courtId              String
+  court                Court    @relation(fields: [courtId], references: [id], onDelete: Cascade)
+  weekday              Int      // 0=Sunday ... 6=Saturday
+  opensAt              String   // HH:mm
+  closesAt             String   // HH:mm
+  slotDurationMinutes  Int      @default(60)
+  bufferMinutes        Int      @default(0)
+  active               Boolean  @default(true)
+  @@index([courtId, weekday, active])
+}
+
+model CourtClosure {
+  id        String   @id @default(cuid())
+  courtId   String
+  court     Court    @relation(fields: [courtId], references: [id], onDelete: Cascade)
+  startsAt  DateTime
+  endsAt    DateTime
+  reason    String?
+  createdAt DateTime @default(now())
+  @@index([courtId, startsAt, endsAt])
 }
 
 model Booking {
   id          String        @id @default(cuid())
   courtId     String
   court       Court         @relation(fields: [courtId], references: [id])
-  userId      String
-  user        User          @relation(fields: [userId], references: [id])
+  userId      String?
+  user        User?         @relation(fields: [userId], references: [id])
+  customerName  String?
+  customerPhone String?
   startsAt    DateTime
   endsAt      DateTime
   totalPrice  Int
   status      BookingStatus @default(PENDING)
+  holdExpiresAt DateTime?
   note        String?
   createdAt   DateTime      @default(now())
   @@index([courtId, startsAt, endsAt])
   @@index([userId, startsAt])
+  @@index([courtId, status, startsAt, endsAt])
 }
 
 model Match {
